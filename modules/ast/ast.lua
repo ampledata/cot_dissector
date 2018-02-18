@@ -94,7 +94,7 @@ require "ast.oneof"
 require "ast.ignore"
 require "ast.syntax"
 
-print("AST modules loaded")
+dprint("AST modules loaded")
 
 
 --------------------------------------------------------------------------------

@@ -23,6 +23,7 @@ local derror   = Settings.derror
 local AstFactory    = require "ast.factory"
 local StatementBase = require "ast.statement_base"
 local Identifier    = require "ast.identifier"
+local FieldStatement = require "ast.field"
 
 
 --------------------------------------------------------------------------------
@@ -45,7 +46,13 @@ function MessageStatement:postParse(st, id, namespace)
 
     local value  = {}
     for _,tokens in ipairs(st[3].value) do
-        value[#value+1] = AstFactory:dispatchBodyStatement(ns, tokens)
+        -- XXX not canBeIdentifier(); that covers too much
+        if tokens[1] and (tokens[1]:isNativeType() or
+                          tokens[1].ttype == "IDENTIFIER") then
+            value[#value+1] = FieldStatement.new(ns, tokens)
+	else
+            value[#value+1] = AstFactory:dispatchBodyStatement(ns, tokens)
+	end
     end
 
     return ns, value

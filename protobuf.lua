@@ -31,6 +31,9 @@ end
 -- capture command line arguments
 local args = { ... }
 
+-- XXX there must be a way of getting these from a library routine
+local __DIR__ = "."
+local __DIR_SEPARATOR__ = "/"
 
 -- enable loading of our modules
 _G['protbuf_dissector'] = {

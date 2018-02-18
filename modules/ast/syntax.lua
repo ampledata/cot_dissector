@@ -66,8 +66,8 @@ end
 
 
 function SyntaxStatement:analyze()
-    if self.value ~= "proto2" then
-        derror("This decoder only supports 'proto2' syntax: ", self.value)
+    if self.value ~= "proto2" and self.value ~= "proto3" then
+        derror("This decoder only supports 'proto2' and 'proto3' syntax: ", self.value)
     end
 end
 

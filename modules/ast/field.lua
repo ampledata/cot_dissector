@@ -27,6 +27,8 @@ local NativeField      = require "ast.native"
 local ScopedIdentifier = require "ast.scoped_identifier"
 local GroupStatement   = require "ast.group"
 
+local Token            = require "front_end.token"
+local Cursor           = require "front_end.cursor"
 
 --------------------------------------------------------------------------------
 -- FieldStatement class, for labeled field statements
@@ -109,6 +111,12 @@ end
 
 
 function FieldStatement.new(namespace, st, oneof_name)
+    -- XXX not canBeIdentifier(); that covers too much
+    if not oneof_name and st[1] and (st[1]:isNativeType() or
+                                     st[1].ttype == "IDENTIFIER") then
+	table.insert(st, 1, Token.new("OPTIONAL", "optional", Cursor.clone(st[1].cursor)))
+    end
+
     if st[2] and st[2].ttype == "GROUP" then
         return GroupStatement.new(namespace, st)
     end
