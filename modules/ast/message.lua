@@ -150,7 +150,11 @@ function MessageStatement:createDissector()
     -- this creates a new function, so local variables are saved as upvalues
     -- and do not need to be stored in the self/proto object
     self.proto.dissector = function(tvbuf,pktinfo,root)
-        return Decoder.new(tvbuf, pktinfo, root):decode(decoder)
+	-- XXX this can return nil if the packet has no protobuf payload
+        new_decoder = Decoder.new(tvbuf, pktinfo, root)
+	if new_decoder then
+	    new_decoder:decode(decoder)
+	end
     end
 end
 

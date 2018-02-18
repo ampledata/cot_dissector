@@ -81,8 +81,21 @@ local RECURSION_LIMIT = 100
 local Decoder = {}
 local Decoder_mt = { __index = Decoder }
 
+local coap_dissector = Dissector.get("coap")
+local coap_version_field = Field.new("coap.version")
+local coap_payload_field = Field.new("coap.payload")
 
 function Decoder.new(tvbuf, pktinfo, root)
+    -- XXX should extend this for other MTPs
+    local coap_version_field_info = coap_version_field()
+    if coap_version_field_info then
+	coap_dissector:call(tvbuf, pktinfo, root)
+	local coap_payload_field_info = coap_payload_field()
+	if not coap_payload_field_info then
+	    return
+	end
+	tvbuf = coap_payload_field_info.range
+    end
     local new_class = {  -- the new instance
         -- from wireshark
         ["tvbuf"] = tvbuf,
@@ -270,7 +283,7 @@ function Decoder:getWtypeSize(wtype)
         if wtype == "LENGTH_DELIMITED" then
             local value, sz = varint:decode32(self.raw, self.cursor, self.limit)
             if not value then
-                return self:addExpertTvb(nil, "invalid_length_delimiter", self.cursor, self.limit)
+                return self:addExpertTvb(nil, "invalid_length_delimited", self.cursor, self.limit)
             end
             self:advance(sz)
             -- note the length-delimited value can legitimately be 0
@@ -377,9 +390,9 @@ function Decoder:addFieldInfo(tree, size)
     key_tree:add(pfields.tag, tvbuf(field_start, key_hdr_size), tag)
     key_tree:add(pfields.wiretype, tvbuf(field_start,1), self.last_wiretype)
 
-    -- add length delimiter info if there is one
+    -- add length delimited info if there is one
     if self.last_wtype == "LENGTH_DELIMITED" then
-        tree:add(pfields.length_delimiter,
+        tree:add(pfields.length_delimited,
                  tvbuf(field_start + key_hdr_size, self.length_size),
                  size)
     end

@@ -47,7 +47,7 @@ local Settings = {
     },
 
     -- current debug level; default disabled
-    debug_level = 0,
+    debug_level = 1,
 
     -- debug printers for different debug levels, by default they
     -- do nothing; but this will be updated later
@@ -84,7 +84,7 @@ local function generateOutput(t)
                 if vt == 'CURSOR' or vt == 'TOKEN' then
                     out[#out+1] = value:getDebugOutput()
                 else
-                    out[#out+1] = "\n" .. inspect(value, { filter = inspect_filter })
+                    out[#out+1] = inspect(value, { filter = inspect_filter })
                 end
             end
         else
@@ -173,12 +173,12 @@ end
 -- for non-false assertions
 function Settings.dassert(check, ...)
     if check then return check end
-    error( generateOutput({ "\nProtobuf ERROR:\n", ... }), 2 )
+    error( generateOutput({ "Protobuf ERROR:\n", ... }), 2 )
 end
 
 
 function Settings.derror(...)
-    error( generateOutput({ "\nProtobuf ERROR:\n", ... }), 2 )
+    error( generateOutput({ "Protobuf ERROR:\n", ... }), 2 )
 end
 
 

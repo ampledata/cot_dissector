@@ -53,9 +53,9 @@ local experts = {
         stop     = false,
     },
 
-    invalid_length_delimiter = {
-        abbrev   = "protobuf.length_delimiter_value.expert",
-        text     = "Protobuf invalid Length Delimiter value",
+    invalid_length_delimited = {
+        abbrev   = "protobuf.length_delimited_value.expert",
+        text     = "Protobuf invalid Length Delimited value",
         group    = expert.group.PROTOCOL,
         severity = expert.severity.ERROR,
         stop     = true,
