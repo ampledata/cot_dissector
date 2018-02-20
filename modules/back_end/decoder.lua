@@ -42,6 +42,8 @@ local dprint2  = Settings.dprint2
 local dassert  = Settings.dassert
 local derror   = Settings.derror
 
+local dsummary = Settings.dsummary
+
 local Struct             = Struct
 local Syntax             = require "syntax"
 local varint             = require "back_end.varint"
@@ -82,13 +84,52 @@ local Decoder = {}
 local Decoder_mt = { __index = Decoder }
 
 local coap_dissector = Dissector.get("coap")
-local coap_version_field = Field.new("coap.version")
 local coap_payload_field = Field.new("coap.payload")
 
+-- XXX payload definitions (should be in a class and abstracted so this module is generic)
+local payload_field_name = ""
+local payload_info = {}
+local payload_sar_states = {BEGIN = "1", INPROCESS = "2", COMPLETE = "3"}
+
+local function set_payload_field_name(name)
+    local payload_field_names = {session_id=true, sequence_id=true, payload_sar_state=true,
+                                 payload=true}
+
+    -- XXX should use the full path etc.
+    if payload_field_names[name] then
+        payload_field_name = name
+    else
+        payload_field_name = ""
+    end
+end
+
+local function set_payload_info(number, value)
+    if payload_field_name ~= "" then
+        if not payload_info[number] then
+            payload_info[number] = {}
+        end
+        payload_info[number][payload_field_name] = tostring(value)
+        -- dsummary("set_payload_info", "payload_info", payload_info)
+    end
+end
+
+-- XXX not checking for missing or duplicate records
+local function get_payload(number)
+    local session_id = payload_info[number].session_id
+    local chunks = {}
+    for _, info in ipairs(payload_info) do
+        if info.session_id == session_id then
+            chunks[tonumber(info.sequence_id)] = info.payload
+        end
+    end
+    local payload = table.concat(chunks, " ")
+    return payload
+end
+
 function Decoder.new(tvbuf, pktinfo, root)
+    -- XXX shouldn't hard-code the port number
     -- XXX should extend this for other MTPs
-    local coap_version_field_info = coap_version_field()
-    if coap_version_field_info then
+    if pktinfo.dst_port == 5683 then
 	coap_dissector:call(tvbuf, pktinfo, root)
 	local coap_payload_field_info = coap_payload_field()
 	if not coap_payload_field_info then
@@ -96,6 +137,7 @@ function Decoder.new(tvbuf, pktinfo, root)
 	end
 	tvbuf = coap_payload_field_info.range
     end
+
     local new_class = {  -- the new instance
         -- from wireshark
         ["tvbuf"] = tvbuf,
@@ -109,6 +151,9 @@ function Decoder.new(tvbuf, pktinfo, root)
         -- pseudo-stack of TreeItems; pushed when sub-tree is added, which
         -- occurs for Message/Group for example, and popped when it returns from it
         ["tree"] = root,
+
+        -- the original root (this isn't changed)
+        ["root"] = root,
 
         -- the child tree returned from tree:add() calls, used for tree
         -- push/popping
@@ -295,10 +340,12 @@ function Decoder:getWtypeSize(wtype)
 end
 
 
+
 -- called by the Message/Packet class by its wireshark-registered proto.dissector
 -- function - i.e., the first/top-level Message, which starts the whole thing
 -- off
 function Decoder:decode(packet)
+    -- dsummary("Decoder:decode", "packet", packet)
     packet:decode(self)
 end
 
@@ -355,6 +402,7 @@ function Decoder:decodeTags(tags, frequency)
         dassert(object.decode, "Programming error: tag in table does not have a dissect function")
         if self:enterRecursion() then
             local limit, cursor = self:pushLimit(size)
+            set_payload_field_name(object.name)
             if not object:decode(self, self.tag, self.last_wtype) then
                 -- the error should already be handled
                 return
@@ -444,15 +492,28 @@ end
 
 -- adds the given ProtoField for limit size, advances
 function Decoder:addFieldBytes(pfield)
+    local number = self.pktinfo.number
+    local range = self.tvbuf(self.field_start + self.key_size, self.limit)
+    set_payload_info(number, range)
+
     local tree = self.tree:add(pfield, self.tvbuf(self.field_start, self.limit + self.key_size))
     self:addFieldInfo(tree, self.limit)
     self:advance(self.limit)
+
+    if payload_info[number].payload_sar_state == payload_sar_states.COMPLETE then
+        local usp_msg_dissector = Dissector.get("usp.msg")
+        local payload = get_payload(number)
+        local tvb = ByteArray.new(payload):tvb("USP Msg")
+        usp_msg_dissector:call(tvb, self.pktinfo, self.root)
+    end
+
     return tree
 end
 
 
 function Decoder:addFieldVarint(pfield, vfunc)
     local value, size = vfunc(varint, self.raw, self.cursor, self.limit)
+    set_payload_info(self.pktinfo.number, value)
 
     if not value then
         return self:addExpertTvb(nil, "invalid_varint", self.cursor, self.limit)

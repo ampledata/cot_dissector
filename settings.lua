@@ -47,7 +47,7 @@ local Settings = {
     },
 
     -- current debug level; default disabled
-    debug_level = 1,
+    debug_level = 0,
 
     -- debug printers for different debug levels, by default they
     -- do nothing; but this will be updated later
@@ -181,5 +181,59 @@ function Settings.derror(...)
     error( generateOutput({ "Protobuf ERROR:\n", ... }), 2 )
 end
 
+
+-- XXX for debugging/understanding
+local function summary(k, v, sofar, indent, ismeta)
+    if sofar == nil then sofar = {} end
+    if indent == nil then indent = "" end
+    if ismeta == nil then ismeta = false end
+
+    local first = {"name", "label", "ttype"}
+    local ignore = {pfield=true, raw=true}
+    local literal = {}
+    local stopat = {frequency=true}
+
+    local vt = type(v)
+    local s
+    if vt == "string" or vt == "number" or literal[k] then
+        s = k .. ": " .. v
+    else
+        s = k .. ": (" .. vt .. ")"
+    end
+    sofar[#sofar+1] = indent .. s
+
+    indent = indent .. "  "
+
+    if false and vt == "table" and not ismeta then
+        local vm = getmetatable(v)
+        if vm then
+            sofar = summary("metatable", vm, sofar, indent, true)
+        end
+    end
+
+    if vt == "table" and not stopat[k] then
+        local tab = v
+
+        local done = {}
+        for _, k in ipairs(first) do
+            if type(tab[k]) ~= nil and tab[k] ~= nil then
+                sofar = summary(k, tab[k], sofar, indent, ismeta)
+            end
+            done[k] = true
+        end
+
+        for k, v in pairs(tab) do
+            if not done[k] and not ignore[k] then
+                sofar = summary(k, v, sofar, indent, ismeta)
+            end
+        end
+    end
+
+    return sofar
+end
+
+function Settings.dsummary(func, name, value)
+    Settings.dprint(func .. "\n" .. table.concat(summary(name, value), "\n"))
+end
 
 return Settings

@@ -52,7 +52,6 @@ Settings:processCmdLine(args)
 local dprint  = Settings.dprint
 local dprint2 = Settings.dprint2
 
-
 -- load the rest of our modules
 local GenericProto  = require "generic.proto"
 
