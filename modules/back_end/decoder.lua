@@ -93,7 +93,7 @@ local stomp_dissector = Dissector.get("stomp")
 -- XXX payload definitions (should be in a class and abstracted so this module is generic)
 local payload_field_name = ""
 local payload_info = {}
-local payload_sar_states = {BEGIN = "1", INPROCESS = "2", COMPLETE = "3"}
+local payload_sar_states = {BEGIN = 1, INPROCESS = 2, COMPLETE = 3}
 
 local function set_payload_field_name(name)
     local payload_field_names = {session_id=true, sequence_id=true, payload_sar_state=true,
@@ -107,46 +107,61 @@ local function set_payload_field_name(name)
     end
 end
 
+-- XXX shouldn't use number; it can be reused! use number + time?
 local function set_payload_info(number, value)
     if payload_field_name ~= "" then
         if not payload_info[number] then
             payload_info[number] = {}
         end
-        payload_info[number][payload_field_name] = tostring(value)
-        -- dsummary("set_payload_info", "payload_info", payload_info)
+        payload_info[number][payload_field_name] = value
+        dsummary("set_payload_info", "payload_info", payload_info)
     end
 end
 
 -- XXX not checking for missing or duplicate records
 local function get_payload(number)
+    local payload
     local session_id = payload_info[number].session_id
-    local chunks = {}
-    for _, info in ipairs(payload_info) do
-        if info.session_id == session_id then
-            chunks[tonumber(info.sequence_id)] = info.payload
+    if session_id == nil then
+        payload = payload_info[number].payload
+    else
+        local chunks = {}
+        for _, info in ipairs(payload_info) do
+            if tostring(info.session_id) == tostring(session_id) then
+                chunks[tonumber(tostring(info.sequence_id))] = info.payload
+            end
         end
+        -- XXX this doesn't work, because the payload is now expected to be
+        --     TvbRanges
+        payload = table.concat(chunks, " ")
     end
-    local payload = table.concat(chunks, " ")
+    dsummary("get_payload()", "payload", payload)
     return payload
 end
 
 function Decoder.new(tvbuf, pktinfo, root)
     -- XXX shouldn't hard-code the port numbers
-    if pktinfo.dst_port == 5683 then
+
+    -- dprint("Decoder:new() port", pktinfo.dst_port, "len", tvbuf:len(),
+    --        "offset", tvbuf:offset())
+
+    if (pktinfo.src_port == 5683 or pktinfo.dst_port == 5683) and
+                                    tvbuf:offset() > 0 then
 	coap_dissector:call(tvbuf, pktinfo, root)
 	local coap_payload_field_info = coap_payload_field()
 	if not coap_payload_field_info then
 	    return
 	end
-	tvbuf = coap_payload_field_info.range
+	tvbuf = coap_payload_field_info.range:tvb()
+
 --[[
-    elseif pktinfo.dst_port == 54321 then
+    elseif (pktinfo.src_port == 54321 or pktinfo.dst_port == 54321) then
 	stomp_dissector:call(tvbuf, pktinfo, root)
 	local stomp_payload_field_info = stomp_payload_field()
 	if not stomp_payload_field_info then
 	    return
 	end
-        tvbuf = stomp_payload_field_info.range
+        tvbuf = stomp_payload_field_info.range::tvb()
 ]]
     end
 
@@ -512,11 +527,20 @@ function Decoder:addFieldBytes(pfield)
     self:addFieldInfo(tree, self.limit)
     self:advance(self.limit)
 
-    if payload_info[number].payload_sar_state == payload_sar_states.COMPLETE then
+    if payload_info[number].payload_sar_state == nil or
+    payload_info[number].payload_sar_state == payload_sar_states.COMPLETE then
         local usp_msg_dissector = Dissector.get("usp.msg")
         local payload = get_payload(number)
-        local tvb = ByteArray.new(payload):tvb("USP Msg")
-        usp_msg_dissector:call(tvb, self.pktinfo, self.root)
+        if payload ~= nil then
+            -- XXX this looks horrible, but this needs to be a _new_ TVB so the
+            --     offset will be zero when we process it (so we know not to
+            --     look for an MTP header)
+            -- XXX was local tvb = ByteArray.new(payload):tvb("USP Msg") and
+            --     will need to revert to using Hex bytes?
+            local tvbuf = ByteArray.new(
+                tostring(payload:bytes())):tvb("USP Msg")
+            usp_msg_dissector:call(tvbuf, self.pktinfo, self.root)
+        end
     end
 
     return tree

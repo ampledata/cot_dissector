@@ -47,7 +47,7 @@ local Settings = {
     },
 
     -- current debug level; default disabled
-    debug_level = 0,
+    debug_level = 1,
 
     -- debug printers for different debug levels, by default they
     -- do nothing; but this will be updated later
@@ -196,7 +196,11 @@ local function summary(k, v, sofar, indent, ismeta)
     local vt = type(v)
     local s
     if vt == "string" or vt == "number" or literal[k] then
-        s = k .. ": " .. v
+        if vt == "string" then
+            s = k .. ": (" .. v:len() .. ") "  .. v
+        else
+            s = k .. ": " .. v
+        end
     else
         s = k .. ": (" .. vt .. ")"
     end
