@@ -86,6 +86,10 @@ local Decoder_mt = { __index = Decoder }
 local coap_dissector = Dissector.get("coap")
 local coap_payload_field = Field.new("coap.payload")
 
+-- XXX the STOMP payload field is a guess
+local stomp_dissector = Dissector.get("stomp")
+-- local stomp_payload_field = Field.new("stomp.payload")
+
 -- XXX payload definitions (should be in a class and abstracted so this module is generic)
 local payload_field_name = ""
 local payload_info = {}
@@ -127,8 +131,7 @@ local function get_payload(number)
 end
 
 function Decoder.new(tvbuf, pktinfo, root)
-    -- XXX shouldn't hard-code the port number
-    -- XXX should extend this for other MTPs
+    -- XXX shouldn't hard-code the port numbers
     if pktinfo.dst_port == 5683 then
 	coap_dissector:call(tvbuf, pktinfo, root)
 	local coap_payload_field_info = coap_payload_field()
@@ -136,6 +139,15 @@ function Decoder.new(tvbuf, pktinfo, root)
 	    return
 	end
 	tvbuf = coap_payload_field_info.range
+--[[
+    elseif pktinfo.dst_port == 54321 then
+	stomp_dissector:call(tvbuf, pktinfo, root)
+	local stomp_payload_field_info = stomp_payload_field()
+	if not stomp_payload_field_info then
+	    return
+	end
+        tvbuf = stomp_payload_field_info.range
+]]
     end
 
     local new_class = {  -- the new instance
@@ -584,7 +596,8 @@ end
 function Decoder:addProto(pfield, name, separator, is_packet_start)
     separator = separator or ":"
 
-    self.pktinfo.cols.protocol:set(name)
+    -- XXX obviously this should come from the namespace... but we don't have it here
+    self.pktinfo.cols.protocol:set("USP " .. name)
 
     if is_packet_start then
         self.pktinfo.cols.info:set(name)
@@ -593,7 +606,8 @@ function Decoder:addProto(pfield, name, separator, is_packet_start)
     end
 
     local tree = self.tree:add(pfield, self.tvbuf(self.field_start or 0, self.limit))
-    tree:set_text(name)
+    -- XXX obviously this should come from the namespace... but we don't have it here
+    tree:set_text("USP " .. name)
 
     -- self.cursor does not move, nor does self.limit
     return tree

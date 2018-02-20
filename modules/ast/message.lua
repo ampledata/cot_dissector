@@ -151,7 +151,7 @@ function MessageStatement:createDissector()
     -- and do not need to be stored in the self/proto object
     self.proto.dissector = function(tvbuf,pktinfo,root)
 	-- XXX this can return nil if the packet has no protobuf payload
-        new_decoder = Decoder.new(tvbuf, pktinfo, root)
+        local new_decoder = Decoder.new(tvbuf, pktinfo, root)
 	if new_decoder then
 	    new_decoder:decode(decoder)
 	end

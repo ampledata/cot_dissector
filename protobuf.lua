@@ -31,9 +31,8 @@ end
 -- capture command line arguments
 local args = { ... }
 
--- XXX there must be a way of getting these from a library routine
-local __DIR__ = "."
-local __DIR_SEPARATOR__ = "/"
+local __DIR__ = os.getenv("HOME") .. "/.wireshark/plugins/protobuf_dissector"
+local __DIR_SEPARATOR__ = package.config:sub(1,1) -- first character
 
 -- enable loading of our modules
 _G['protbuf_dissector'] = {
