@@ -20,7 +20,6 @@ local debug   = require "debug"
 local __DIR__           = protbuf_dissector.__DIR__
 local __DIR_SEPARATOR__ = protbuf_dissector.__DIR_SEPARATOR__
 
-
 --------------------------------------------------------------------------------
 -- our Settings
 local Settings = {
@@ -197,7 +196,11 @@ local function summary(k, v, sofar, indent, ismeta)
     local s
     if vt == "string" or vt == "number" or literal[k] then
         if vt == "string" then
-            s = k .. ": (" .. v:len() .. ") "  .. v
+            local vf = v
+            if vf:len() > 48 then
+                vf = vf:sub(0, 48) .. "..."
+            end
+            s = k .. ": (" .. v:len() .. ") "  .. vf
         else
             s = k .. ": " .. v
         end

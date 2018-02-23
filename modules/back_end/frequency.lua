@@ -121,9 +121,10 @@ local label_is_single = {
 }
 
 
+-- XXX ONEOF is required only for proto2
 local label_is_required = {
     ["REQUIRED"] = true,
-    ["ONEOF"]    = true,
+--  ["ONEOF"]    = true,
 }
 
 

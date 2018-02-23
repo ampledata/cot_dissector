@@ -86,53 +86,84 @@ local Decoder_mt = { __index = Decoder }
 local coap_dissector = Dissector.get("coap")
 local coap_payload_field = Field.new("coap.payload")
 
--- XXX the STOMP payload field is a guess
 local stomp_dissector = Dissector.get("stomp")
--- local stomp_payload_field = Field.new("stomp.payload")
+local stomp_payload_field = Field.new("stomp.body")
+
+local websocket_dissector = Dissector.get("websocket")
+local websocket_payload_field = Field.new("websocket.payload")
 
 -- XXX payload definitions (should be in a class and abstracted so this module is generic)
 local payload_field_name = ""
-local payload_info = {}
+
+local payload_field_types = {session_id='number', sequence_id='number', payload_sar_state='number',
+                             payload='tvrange'}
+
 local payload_sar_states = {BEGIN = 1, INPROCESS = 2, COMPLETE = 3}
 
-local function set_payload_field_name(name)
-    local payload_field_names = {session_id=true, sequence_id=true, payload_sar_state=true,
-                                 payload=true}
+local payload_info = {}
 
-    -- XXX should use the full path etc.
-    if payload_field_names[name] then
+local function reset_payload()
+    payload_info = {}
+    dsummary("reset_payload()", "payload_info", payload_info)
+end
+
+local function set_payload_field_name(name)
+    -- XXX should use the full resource path to avoid misidentification
+    if payload_field_types[name] then
         payload_field_name = name
     else
         payload_field_name = ""
     end
 end
 
--- XXX shouldn't use number; it can be reused! use number + time?
 local function set_payload_info(number, value)
-    if payload_field_name ~= "" then
+    if payload_field_name == "" then
+        return false
+    else
+        local pft = payload_field_types[payload_field_name]
+        local val = value
+        if pft == 'number' then
+            val = tonumber(tostring(value))
+        elseif pft == 'string' then
+            val = tostring(value)
+        elseif pft == 'tvrange' then
+            val = tostring(value:bytes())
+        else
+            dassert(false, "Invalid payload field type " .. pft)
+        end
         if not payload_info[number] then
             payload_info[number] = {}
         end
-        payload_info[number][payload_field_name] = value
-        dsummary("set_payload_info", "payload_info", payload_info)
+        if pft ~= 'tvrange' then
+            payload_info[number][payload_field_name] = val
+        else
+            if not payload_info[number][payload_field_name] then
+                payload_info[number][payload_field_name] = {}
+            end
+            table.insert(payload_info[number][payload_field_name], val)
+        end
+        dsummary("set_payload_info (" .. number .. " " .. payload_field_name ..
+                     " " .. val .. ")", "payload_info", payload_info)
+        return true
     end
 end
 
 -- XXX not checking for missing or duplicate records
+-- XXX using payload[1] because we don't have a way of knowing
+--     when these are the _last_ payload bytes
 local function get_payload(number)
     local payload
     local session_id = payload_info[number].session_id
     if session_id == nil then
-        payload = payload_info[number].payload
+        payload = payload_info[number].payload[1]
     else
         local chunks = {}
         for _, info in ipairs(payload_info) do
-            if tostring(info.session_id) == tostring(session_id) then
-                chunks[tonumber(tostring(info.sequence_id))] = info.payload
+            if info.session_id == session_id then
+                chunks[info.sequence_id] = info.payload[1]
             end
         end
-        -- XXX this doesn't work, because the payload is now expected to be
-        --     TvbRanges
+        -- dsummary("get_payload()", "chunks", chunks)
         payload = table.concat(chunks, " ")
     end
     dsummary("get_payload()", "payload", payload)
@@ -145,24 +176,49 @@ function Decoder.new(tvbuf, pktinfo, root)
     -- dprint("Decoder:new() port", pktinfo.dst_port, "len", tvbuf:len(),
     --        "offset", tvbuf:offset())
 
-    if (pktinfo.src_port == 5683 or pktinfo.dst_port == 5683) and
-                                    tvbuf:offset() > 0 then
+    -- XXX or Proto:init()?
+    if pktinfo.number == 1 and not pktinfo.visited then
+        reset_payload()
+    end
+
+    -- XXX is there a better way? offset of zero means application layer only
+    if tvbuf:offset() == 0 then
+        -- pass
+
+    -- XXX also should check it's UDP
+    -- XXX worse! I think that we are responsible for the CoAP payload reassembly?
+    elseif pktinfo.src_port == 5683 or pktinfo.dst_port == 5683 then
+        dprint("number", pktinfo.number, "visited", pktinfo.visited)
 	coap_dissector:call(tvbuf, pktinfo, root)
 	local coap_payload_field_info = coap_payload_field()
-	if not coap_payload_field_info then
+	if not coap_payload_field_info or
+           coap_payload_field_info.len == 0 then
 	    return
 	end
+        dprint("Decoder.new() number", pktinfo.number, "CoAP payload len", coap_payload_field_info.len)
 	tvbuf = coap_payload_field_info.range:tvb()
 
---[[
-    elseif (pktinfo.src_port == 54321 or pktinfo.dst_port == 54321) then
+    -- XXX also should check it's TCP
+    elseif pktinfo.src_port == 61613 or pktinfo.dst_port == 61613 then
 	stomp_dissector:call(tvbuf, pktinfo, root)
 	local stomp_payload_field_info = stomp_payload_field()
-	if not stomp_payload_field_info then
+	if not stomp_payload_field_info or
+           stomp_payload_field_info.len == 0 then
 	    return
 	end
-        tvbuf = stomp_payload_field_info.range::tvb()
-]]
+        dprint("Decoder.new() number", pktinfo.number, "STOMP payload len", stomp_payload_field_info.len)
+        tvbuf = stomp_payload_field_info.range:tvb()
+
+    -- XXX also should check it's TCP
+    elseif pktinfo.src_port == 80 or pktinfo.dst_port == 80 then
+	websocket_dissector:call(tvbuf, pktinfo, root)
+	local websocket_payload_field_info = websocket_payload_field()
+	if not websocket_payload_field_info or
+           websocket_payload_field_info.len == 0 then
+	    return
+	end
+        dprint("Decoder.new() number", pktinfo.number, "Websocket payload len", websocket_payload_field_info.len)
+        tvbuf = websocket_payload_field_info.range:tvb()
     end
 
     local new_class = {  -- the new instance
@@ -521,24 +577,22 @@ end
 function Decoder:addFieldBytes(pfield)
     local number = self.pktinfo.number
     local range = self.tvbuf(self.field_start + self.key_size, self.limit)
-    set_payload_info(number, range)
+    local payload_set = set_payload_info(number, range)
 
     local tree = self.tree:add(pfield, self.tvbuf(self.field_start, self.limit + self.key_size))
     self:addFieldInfo(tree, self.limit)
     self:advance(self.limit)
 
-    if payload_info[number].payload_sar_state == nil or
-    payload_info[number].payload_sar_state == payload_sar_states.COMPLETE then
+    -- dsummary("Decoder:addFieldBytes()", "self", self)
+
+    if payload_set and (payload_info[number].payload_sar_state == nil or
+                        payload_info[number].payload_sar_state == payload_sar_states.COMPLETE) then
         local usp_msg_dissector = Dissector.get("usp.msg")
         local payload = get_payload(number)
         if payload ~= nil then
-            -- XXX this looks horrible, but this needs to be a _new_ TVB so the
-            --     offset will be zero when we process it (so we know not to
-            --     look for an MTP header)
-            -- XXX was local tvb = ByteArray.new(payload):tvb("USP Msg") and
-            --     will need to revert to using Hex bytes?
-            local tvbuf = ByteArray.new(
-                tostring(payload:bytes())):tvb("USP Msg")
+            -- this needs to be a _new_ TVB so the offset will be zero when we
+            -- process it (so we know not to look for an MTP header)
+            local tvbuf = ByteArray.new(payload):tvb("USP Msg")
             usp_msg_dissector:call(tvbuf, self.pktinfo, self.root)
         end
     end

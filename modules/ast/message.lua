@@ -19,6 +19,7 @@ local dprint   = Settings.dprint
 local dprint2  = Settings.dprint2
 local dassert  = Settings.dassert
 local derror   = Settings.derror
+local dsummary = Settings.dsummary
 
 local AstFactory    = require "ast.factory"
 local StatementBase = require "ast.statement_base"
@@ -145,15 +146,18 @@ end
 -- Message is the top-level Message of a packet
 function MessageStatement:createDissector()
     -- this gets a decoder for the Proto object only, not a field
-    local decoder = PacketDecoder.new(self.proto, self:getName(), self.tag_table)
+    local packet_decoder = PacketDecoder.new(self.proto, self:getName(), self.tag_table)
 
     -- this creates a new function, so local variables are saved as upvalues
     -- and do not need to be stored in the self/proto object
     self.proto.dissector = function(tvbuf,pktinfo,root)
 	-- XXX this can return nil if the packet has no protobuf payload
-        local new_decoder = Decoder.new(tvbuf, pktinfo, root)
-	if new_decoder then
-	    new_decoder:decode(decoder)
+        local message_decoder = Decoder.new(tvbuf, pktinfo, root)
+	if message_decoder then
+	    message_decoder:decode(packet_decoder)
+            -- dsummary("MessageStatement:createDissector", "packet_decoder", packet_decoder)
+            -- dsummary("proto.dissector (" .. self:getName() .. ")", "message_decoder",
+            --          message_decoder)
 	end
     end
 end
@@ -184,6 +188,7 @@ function MessageStatement:createProto()
 
         -- add it for port 0 so it can be used in "Decode As..."
         DissectorTable.get("udp.port"):add(0, self.proto)
+        DissectorTable.get("tcp.port"):add(0, self.proto)
     end
 
     return self.proto
