@@ -51,6 +51,10 @@ local GenericDecoder     = require "generic.decoder"
 local GenericProtoFields = require "generic.proto_fields"
 local GenericExperts     = require "generic.experts"
 
+local ProtocolDispatch   = require "protocol.dispatch"
+
+local protocol_dispatcher = ProtocolDispatch.dispatcher
+
 if not Struct then
     error("Wireshark is too old: no Struct library; upgrade to version 1.12 or higher")
 end
@@ -83,143 +87,22 @@ local RECURSION_LIMIT = 100
 local Decoder = {}
 local Decoder_mt = { __index = Decoder }
 
-local coap_dissector = Dissector.get("coap")
-local coap_payload_field = Field.new("coap.payload")
-
+-- XXX application protocol support (needs to move from here)
 local stomp_dissector = Dissector.get("stomp")
 local stomp_payload_field = Field.new("stomp.body")
 
 local websocket_dissector = Dissector.get("websocket")
 local websocket_payload_field = Field.new("websocket.payload")
 
--- XXX payload definitions (should be in a class and abstracted so this module is generic)
-local payload_field_name = ""
-
-local payload_field_types = {session_id='number', sequence_id='number', payload_sar_state='number',
-                             payload='tvrange'}
-
-local payload_sar_states = {BEGIN = 1, INPROCESS = 2, COMPLETE = 3}
-
-local payload_info = {}
-
-local function reset_payload()
-    payload_info = {}
-    dsummary("reset_payload()", "payload_info", payload_info)
-end
-
-local function set_payload_field_name(name)
-    -- XXX should use the full resource path to avoid misidentification
-    if payload_field_types[name] then
-        payload_field_name = name
-    else
-        payload_field_name = ""
-    end
-end
-
-local function set_payload_info(number, value)
-    if payload_field_name == "" then
-        return false
-    else
-        local pft = payload_field_types[payload_field_name]
-        local val = value
-        if pft == 'number' then
-            val = tonumber(tostring(value))
-        elseif pft == 'string' then
-            val = tostring(value)
-        elseif pft == 'tvrange' then
-            val = tostring(value:bytes())
-        else
-            dassert(false, "Invalid payload field type " .. pft)
-        end
-        if not payload_info[number] then
-            payload_info[number] = {}
-        end
-        if pft ~= 'tvrange' then
-            payload_info[number][payload_field_name] = val
-        else
-            if not payload_info[number][payload_field_name] then
-                payload_info[number][payload_field_name] = {}
-            end
-            table.insert(payload_info[number][payload_field_name], val)
-        end
-        dsummary("set_payload_info (" .. number .. " " .. payload_field_name ..
-                     " " .. val .. ")", "payload_info", payload_info)
-        return true
-    end
-end
-
--- XXX not checking for missing or duplicate records
--- XXX using payload[1] because we don't have a way of knowing
---     when these are the _last_ payload bytes
-local function get_payload(number)
-    local payload
-    local session_id = payload_info[number].session_id
-    if session_id == nil then
-        payload = payload_info[number].payload[1]
-    else
-        local chunks = {}
-        for _, info in ipairs(payload_info) do
-            if info.session_id == session_id then
-                chunks[info.sequence_id] = info.payload[1]
-            end
-        end
-        -- dsummary("get_payload()", "chunks", chunks)
-        payload = table.concat(chunks, " ")
-    end
-    dsummary("get_payload()", "payload", payload)
-    return payload
-end
-
 function Decoder.new(tvbuf, pktinfo, root)
-    -- XXX shouldn't hard-code the port numbers
-
-    -- dprint("Decoder:new() port", pktinfo.dst_port, "len", tvbuf:len(),
-    --        "offset", tvbuf:offset())
-
-    -- XXX or Proto:init()?
-    if pktinfo.number == 1 and not pktinfo.visited then
-        reset_payload()
+    -- process the application layer header (if any), returning a buffer
+    -- (either the current packet's payload or a payload assembled from
+    -- multiple packets) when a complete protobuf message is available
+    local new_tvbuf = protocol_dispatcher:dispatch(tvbuf, pktinfo, root)
+    if not new_tvbuf then
+        return
     end
-
-    -- XXX is there a better way? offset of zero means application layer only
-    if tvbuf:offset() == 0 then
-        -- pass
-
-    -- XXX also should check it's UDP
-    -- XXX worse! I think that we are responsible for the CoAP payload reassembly?
-    elseif pktinfo.src_port == 5683 or pktinfo.dst_port == 5683 then
-        dprint("number", pktinfo.number, "visited", pktinfo.visited)
-	coap_dissector:call(tvbuf, pktinfo, root)
-	local coap_payload_field_info = coap_payload_field()
-	if not coap_payload_field_info or
-           coap_payload_field_info.len == 0 then
-	    return
-	end
-        dprint("Decoder.new() number", pktinfo.number, "CoAP payload len", coap_payload_field_info.len)
-	tvbuf = coap_payload_field_info.range:tvb()
-
-    -- XXX also should check it's TCP
-    elseif pktinfo.src_port == 61613 or pktinfo.dst_port == 61613 then
-	stomp_dissector:call(tvbuf, pktinfo, root)
-	local stomp_payload_field_info = stomp_payload_field()
-	if not stomp_payload_field_info or
-           stomp_payload_field_info.len == 0 then
-	    return
-	end
-        dprint("Decoder.new() number", pktinfo.number, "STOMP payload len", stomp_payload_field_info.len)
-        tvbuf = stomp_payload_field_info.range:tvb()
-
-    -- XXX also should check it's TCP
-    elseif pktinfo.src_port == 80 or pktinfo.dst_port == 80 then
-	websocket_dissector:call(tvbuf, pktinfo, root)
-	local websocket_payload_field_info = websocket_payload_field()
-	if not websocket_payload_field_info or
-           websocket_payload_field_info.len == 0 then
-	    return
-	end
-        dprint("Decoder.new() number", pktinfo.number, "Websocket payload len", websocket_payload_field_info.len)
-        tvbuf = websocket_payload_field_info.range:tvb()
-    end
+    tvbuf = new_tvbuf
 
     local new_class = {  -- the new instance
         -- from wireshark
@@ -485,7 +368,10 @@ function Decoder:decodeTags(tags, frequency)
         dassert(object.decode, "Programming error: tag in table does not have a dissect function")
         if self:enterRecursion() then
             local limit, cursor = self:pushLimit(size)
-            set_payload_field_name(object.name)
+
+            -- note the current field name, ready for a later call to
+            -- set_field_value()
+            protocol_dispatcher:set_field_name(object.name)
             if not object:decode(self, self.tag, self.last_wtype) then
                 -- the error should already be handled
                 return
@@ -577,25 +463,18 @@ end
 function Decoder:addFieldBytes(pfield)
     local number = self.pktinfo.number
     local range = self.tvbuf(self.field_start + self.key_size, self.limit)
-    local payload_set = set_payload_info(number, range)
+
+    -- store the range, associating it with its field (see set_field_name())
+    protocol_dispatcher:set_field_value(number, range)
 
     local tree = self.tree:add(pfield, self.tvbuf(self.field_start, self.limit + self.key_size))
     self:addFieldInfo(tree, self.limit)
     self:advance(self.limit)
 
-    -- dsummary("Decoder:addFieldBytes()", "self", self)
-
-    if payload_set and (payload_info[number].payload_sar_state == nil or
-                        payload_info[number].payload_sar_state == payload_sar_states.COMPLETE) then
-        local usp_msg_dissector = Dissector.get("usp.msg")
-        local payload = get_payload(number)
-        if payload ~= nil then
-            -- this needs to be a _new_ TVB so the offset will be zero when we
-            -- process it (so we know not to look for an MTP header)
-            local tvbuf = ByteArray.new(payload):tvb("USP Msg")
-            usp_msg_dissector:call(tvbuf, self.pktinfo, self.root)
-        end
-    end
+    -- check whether a complete protobuf sub-layer payload is available and,
+    -- if so, dissect it
+    protocol_dispatcher:check_sublayer_payload(
+        self.tvbuf, self.pktinfo, self.root)
 
     return tree
 end
@@ -603,7 +482,9 @@ end
 
 function Decoder:addFieldVarint(pfield, vfunc)
     local value, size = vfunc(varint, self.raw, self.cursor, self.limit)
-    set_payload_info(self.pktinfo.number, value)
+
+    -- store the value, associating it with its field (see set_field_name())
+    protocol_dispatcher:set_field_value(self.pktinfo.number, value)
 
     if not value then
         return self:addExpertTvb(nil, "invalid_varint", self.cursor, self.limit)

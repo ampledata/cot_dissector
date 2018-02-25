@@ -75,5 +75,18 @@ dprint2(#proto_files,"proto files being compiled")
 -- compile the proto files
 local decoder_table = Compiler:compile(proto_files)
 
+
+----------------------------------------
+-- create and register protocol handlers
+local Dispatch = require "protocol.dispatch"
+
+local CoAPHandler = require "protocol.coap"
+local coap_handler = CoAPHandler.new("CoAP Payload", "???", 5683)
+Dispatch.dispatcher:register(coap_handler)
+
+local USPHandler = require "protocol.usp"
+local usp_handler = USPHandler.new("USP Payload")
+Dispatch.dispatcher:register(usp_handler)
+
 -- disable loading of our modules
 _G['protbuf_dissector'] = nil

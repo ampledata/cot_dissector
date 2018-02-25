@@ -182,10 +182,9 @@ end
 
 
 -- XXX for debugging/understanding
-local function summary(k, v, sofar, indent, ismeta)
+local function summary(k, v, sofar, indent)
     if sofar == nil then sofar = {} end
     if indent == nil then indent = "" end
-    if ismeta == nil then ismeta = false end
 
     local first = {"name", "label", "ttype"}
     local ignore = {pfield=true, raw=true}
@@ -194,13 +193,15 @@ local function summary(k, v, sofar, indent, ismeta)
 
     local vt = type(v)
     local s
-    if vt == "string" or vt == "number" or literal[k] then
+    if vt == "boolean" or vt == "number" or vt == "string" or literal[k] then
         if vt == "string" then
             local vf = v
             if vf:len() > 48 then
                 vf = vf:sub(0, 48) .. "..."
             end
             s = k .. ": (" .. v:len() .. ") "  .. vf
+        elseif vt == "boolean" then
+            s = k .. ": " .. tostring(v)
         else
             s = k .. ": " .. v
         end
@@ -211,10 +212,10 @@ local function summary(k, v, sofar, indent, ismeta)
 
     indent = indent .. "  "
 
-    if false and vt == "table" and not ismeta then
+    if false and vt == "table" then
         local vm = getmetatable(v)
         if vm then
-            sofar = summary("metatable", vm, sofar, indent, true)
+            sofar = summary("metatable", vm, sofar, indent)
         end
     end
 
@@ -224,14 +225,14 @@ local function summary(k, v, sofar, indent, ismeta)
         local done = {}
         for _, k in ipairs(first) do
             if type(tab[k]) ~= nil and tab[k] ~= nil then
-                sofar = summary(k, tab[k], sofar, indent, ismeta)
+                sofar = summary(k, tab[k], sofar, indent)
             end
             done[k] = true
         end
 
         for k, v in pairs(tab) do
             if not done[k] and not ignore[k] then
-                sofar = summary(k, v, sofar, indent, ismeta)
+                sofar = summary(k, v, sofar, indent)
             end
         end
     end
