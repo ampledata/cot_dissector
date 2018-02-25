@@ -84,6 +84,14 @@ local CoAPHandler = require "protocol.coap"
 local coap_handler = CoAPHandler.new("CoAP Payload", "???", 5683)
 Dispatch.dispatcher:register(coap_handler)
 
+local STOMPHandler = require "protocol.stomp"
+local stomp_handler = STOMPHandler.new("STOMP Payload", "???", 61613)
+Dispatch.dispatcher:register(stomp_handler)
+
+local WebsocketHandler = require "protocol.websocket"
+local websocket_handler = WebsocketHandler.new("Websocket Payload", "???", 80)
+Dispatch.dispatcher:register(websocket_handler)
+
 local USPHandler = require "protocol.usp"
 local usp_handler = USPHandler.new("USP Payload")
 Dispatch.dispatcher:register(usp_handler)

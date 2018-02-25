@@ -26,6 +26,10 @@ local StatementBase = require "ast.statement_base"
 local Identifier    = require "ast.identifier"
 local FieldStatement = require "ast.field"
 
+local ProtocolDispatch   = require "protocol.dispatch"
+
+local protocol_dispatcher = ProtocolDispatch.dispatcher
+
 
 --------------------------------------------------------------------------------
 -- MessageStatement class, for "Message" statements
@@ -176,6 +180,10 @@ function MessageStatement:createProto()
         dprint("Creating Proto for", self.namespace:getFullName(), "with name:", self:getName())
 
         self.proto = Proto.new(self.namespace:getFullName(), self.namespace:getFullName())
+
+        -- this is called for each new capture file
+        -- XXX it's called once for each Proto object, but no matter!
+        self.proto.init = function() protocol_dispatcher:reset() end
 
         self:createTagTable()
 

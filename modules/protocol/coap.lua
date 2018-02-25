@@ -109,24 +109,25 @@ function CoAPHandler:dissect_app_packet(tvbuf, pktinfo, root)
     coap_dissector:call(tvbuf, pktinfo, root)
 
     -- get the necessary info from the CoAP header fields
-    local session, block, more, payload_field = get_header_field_values()
+    local session, block, more, payload_field_info = get_header_field_values()
 
     -- if there's no CoAP payload (or it's empty), we're done
-    if not payload_field or payload_field.len == 0 then
+    if not payload_field_info or payload_field_info.len == 0 then
         return
     end
 
     -- if (block,more) = (1,false), the payload is within the packet, so
     -- convert the range to a buffer directly
     if block == 1 and not more then
-        return payload_field.range:tvb()
+        dprint("payload directly in packet")
+        return payload_field_info.range:tvb()
     end
 
     -- otherwise, set the field values and, if there is now a complete payload,
     -- create and return a new buffer
     self.payload:set_field_values(
         pktinfo.number, {session=session, block=block, more=more,
-                         payload=payload_field.range}, true)
+                         payload=payload_field_info.range}, true)
     if not more then
         local payload_hex_string = self.payload:get_payload_hex_string()
         return ByteArray.new(payload_hex_string):tvb(self.payload.name)

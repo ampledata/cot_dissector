@@ -131,6 +131,9 @@ function Dispatcher:dissect_app_packet(tvbuf, pktinfo, root)
     return tvbuf
 end
 
+-- XXX this is really a different beast; we should split Dispatchers into
+--     two categories: ApplicationDispatcher and SublayerDispatcher (hmm...
+--     "sub-layer" is a bad name, because it's really an _upper_ layer!
 function Dispatcher:check_sublayer_payload(tvbuf, pktinfo, root)
     if self.registrations then
         for _, handler in pairs(self.registrations) do
@@ -148,12 +151,6 @@ function Dispatcher:dispatch(tvbuf, pktinfo, root)
 
     dprint("Dispatcher:dispatch()", "number", number, "visited", visited,
            "offset", offset)
-
-    -- reset state on new capture
-    -- XXX calling Proto:init() might be a better way to do this?
-    if number == 1 and not visited and offset > 0 then
-        self:reset()
-    end
 
     if offset == 0 then
         -- a zero offset means the packet contains only a protobuf message
@@ -184,32 +181,6 @@ function Dispatcher:dispatch(tvbuf, pktinfo, root)
     return
 end
 
---[[
-    -- STOMP
-
-    -- XXX also should check it's TCP
-    elseif pktinfo.src_port == 61613 or pktinfo.dst_port == 61613 then
-	stomp_dissector:call(tvbuf, pktinfo, root)
-	local stomp_payload_field_info = stomp_payload_field()
-	if not stomp_payload_field_info or
-           stomp_payload_field_info.len == 0 then
-	    return
-	end
-        tvbuf = stomp_payload_field_info.range:tvb()
-
-    -- Websockets
-
-    -- XXX also should check it's TCP
-    elseif pktinfo.src_port == 80 or pktinfo.dst_port == 80 then
-	websocket_dissector:call(tvbuf, pktinfo, root)
-	local websocket_payload_field_info = websocket_payload_field()
-	if not websocket_payload_field_info or
-           websocket_payload_field_info.len == 0 then
-	    return
-	end
-        tvbuf = websocket_payload_field_info.range:tvb()
-    end
-]]
 
 function Dispatcher.new()
     local new_class = {

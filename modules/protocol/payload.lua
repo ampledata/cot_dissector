@@ -160,12 +160,14 @@ end
 
 function Payload:init(field_name_mapping_info)
     self.field_name_map = {}
-    for iname, mapping_info in pairs(field_name_mapping_info) do
-        local ename = mapping_info[1]
-        dassert(field_types[iname], "Payload:init() invalid internal " ..
-                    "field name " .. iname)
-        self.field_name_map[ename] = iname
-        self.field_value_mapper[iname] = mapping_info[2]
+    if field_name_mapping_info then
+        for iname, mapping_info in pairs(field_name_mapping_info) do
+            local ename = mapping_info[1]
+            dassert(field_types[iname], "Payload:init() invalid internal " ..
+                        "field name " .. iname)
+            self.field_name_map[ename] = iname
+            self.field_value_mapper[iname] = mapping_info[2]
+        end
     end
 end
 

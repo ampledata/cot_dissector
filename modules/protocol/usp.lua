@@ -30,6 +30,7 @@ local Handler  = Dispatch.Handler
 -- USP definitions.
 --
 
+-- XXX should really be a USPRecordHandler?
 local USPHandler = {}
 local USPHandler_mt = { __index = USPHandler }
 setmetatable( USPHandler, { __index = Dispatch.Handler } )
@@ -73,12 +74,15 @@ end
 
 local usp_msg_dissector = Dissector.get("usp.msg")
 
+-- for USP, "sub-layer" means USP Msg
 function USPHandler:check_sublayer_payload(tvbuf, pktinfo, root)
     if not self.payload:more() then
         local payload_hex_string = self.payload:get_payload_hex_string()
         if payload_hex_string ~= nil then
             -- this needs to be a _new_ buffer so the offset will be zero when
             -- we process it (so we know not to look for an application header)
+            -- XXX but this is a hack; it's better only to create a new buffer
+            --     when absolutely necessary
             local new_tvbuf =
                 ByteArray.new(payload_hex_string):tvb(self.payload.name)
             usp_msg_dissector:call(new_tvbuf, pktinfo, root)
