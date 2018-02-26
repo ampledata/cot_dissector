@@ -66,6 +66,8 @@ end
 
 
 function SyntaxStatement:analyze()
+    -- XXX need to take account of this during the parse, e.g. should note
+    --     that for proto3 "packed" is assumed and oneof is optional
     if self.value ~= "proto2" and self.value ~= "proto3" then
         derror("This decoder only supports 'proto2' and 'proto3' syntax: ", self.value)
     end

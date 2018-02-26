@@ -172,6 +172,7 @@ function Dispatcher:dispatch(tvbuf, pktinfo, root)
     -- 2. the result of concatenating ranges from multiple packets (in
     --    which case it must be handled here)
     -- XXX temporarily assume the first
+    -- XXX hmm... this seems to work in the other case too!
     if true then
         return new_tvbuf
     else

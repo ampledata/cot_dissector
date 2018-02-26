@@ -399,6 +399,9 @@ Syntax.token_info = {
         --     ptype = "STATEMENT",
         --     ftype = ftypes.BYTES,
         -- },
+        -- XXX we currently support maps by pre-processing the .proto files
+        --     as outlined above and at https://developers.google.com/
+        --     protocol-buffers/docs/proto3#backwards-compatibility
     },
 
     VARIABLE =
