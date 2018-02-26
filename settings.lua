@@ -20,6 +20,8 @@ local debug   = require "debug"
 local __DIR__           = protbuf_dissector.__DIR__
 local __DIR_SEPARATOR__ = protbuf_dissector.__DIR_SEPARATOR__
 
+local WIRESHARK_PROTOBUF_DEBUG_LEVEL = os.getenv("WIRESHARK_PROTOBUF_DEBUG_LEVEL")
+
 --------------------------------------------------------------------------------
 -- our Settings
 local Settings = {
@@ -46,7 +48,7 @@ local Settings = {
     },
 
     -- current debug level; default disabled
-    debug_level = 1,
+    debug_level = 0,
 
     -- debug printers for different debug levels, by default they
     -- do nothing; but this will be updated later
@@ -61,6 +63,9 @@ local Settings = {
 
 }
 
+if WIRESHARK_PROTOBUF_DEBUG_LEVEL and WIRESHARK_PROTOBUF_DEBUG_LEVEL ~= "" then
+    Settings.debug_level = tonumber(WIRESHARK_PROTOBUF_DEBUG_LEVEL)
+end
 
 ----------------------------------------
 
