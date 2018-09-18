@@ -85,7 +85,8 @@ local ignore_types = {
     -- remove these, so they end up only being in their namespace's
     -- declaration tables
     MESSAGE = true,
-    ENUM = true
+    ENUM = true,
+    MAP = true,
 }
 
 function MessageStatement:analyze()

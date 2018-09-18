@@ -156,13 +156,26 @@ function Dispatcher:dispatch(tvbuf, pktinfo, root)
         -- a zero offset means the packet contains only a protobuf message
         -- (no lower-layer headers), so it's handed back to the caller
         -- XXX is there a more direct way to determine this?
-        return tvbuf
+        -- XXX naively prevent infinite loop, probably caused by problem
+        --     with packet (currently probably because I'm the middle of
+        --     supporting maps; why do I get a large number of USP payloads?)
+        if self.last_was_protobuf then
+            dprint("Returning protobuf message to caller (suppressed)")
+            return
+        else
+            dprint("Returning protobuf message to caller")
+            self.last_was_protobuf = true
+            return tvbuf
+        end
     end
+    self.last_was_protobuf = false
 
     -- otherwise, pass it to the application-layer dissectors (they are
     -- tried in turn until one of them chooses to handle it)
     local new_tvbuf = self:dissect_app_packet(tvbuf, pktinfo, root)
     if not new_tvbuf then
+        dprint("No application-layer dissector returned packet; returning " ..
+                   "nothing")
         return
     end
 
@@ -172,11 +185,14 @@ function Dispatcher:dispatch(tvbuf, pktinfo, root)
     -- 2. the result of concatenating ranges from multiple packets (in
     --    which case it must be handled here)
     -- XXX temporarily assume the first
+    -- XXX obviously need to get rid of the USP dependency
     -- XXX hmm... this seems to work in the other case too!
     if true then
+        dprint("Returning application-layer packet to caller")
         return new_tvbuf
     else
         local usp_record_dissector = Dissector.get("usp_record.record")
+        dprint("Dissecting USP record; will return nothing")
         usp_record_dissector:call(new_tvbuf, pktinfo, root)
     end
     return

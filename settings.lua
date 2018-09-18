@@ -192,7 +192,7 @@ local function summary(k, v, sofar, indent)
     if indent == nil then indent = "" end
 
     local first = {"name", "label", "ttype"}
-    local ignore = {pfield=true, raw=true}
+    local ignore = {file_text=true, pfield=true, raw=true}
     local literal = {}
     local stopat = {frequency=true}
 
