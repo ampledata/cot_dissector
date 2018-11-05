@@ -32,7 +32,7 @@ end
 local args = { ... }
 
 -- XXX need to generalise this so it will work under Windows
-local __DIR__ = os.getenv("HOME") .. "/.wireshark/plugins/protobuf_dissector"
+local __DIR__ = Dir.personal_plugins_path() .. "/protobuf_dissector"
 local __DIR_SEPARATOR__ = package.config:sub(1,1) -- first character
 
 -- enable loading of our modules
