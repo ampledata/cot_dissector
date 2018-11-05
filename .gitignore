@@ -39,3 +39,4 @@ cscope.*
 *.sw*
 *~
 BROWSE
+.idea
