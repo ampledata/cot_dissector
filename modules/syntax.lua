@@ -388,17 +388,21 @@ Syntax.token_info = {
         --          }
         --          message B {
         --            message MapEntry {
-        --              option map_entry = true;
+        --              option map_entry = true; # not per proto3 definition
         --              string key = 1;
         --              string value = 2;
         --            }
         --            repeated MapEntry values = 1;
         --          }
-        -- {
-        --     value = "map",
-        --     ptype = "STATEMENT",
-        --     ftype = ftypes.BYTES,
-        -- },
+        -- XXX we initially supported maps by pre-processing the .proto files
+        --     as outlined above and at https://developers.google.com/
+        --     protocol-buffers/docs/proto3#backwards-compatibility
+        -- XXX we are currently in the process of supporting them directly
+        {
+            value = "map",
+            ptype = "STATEMENT",
+            ftype = ftypes.BYTES,
+        },
     },
 
     VARIABLE =

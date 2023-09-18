@@ -89,12 +89,13 @@ local PackageStatement = require "ast.package"
 require "ast.option"
 require "ast.enum"
 require "ast.field"
+require "ast.map"
 require "ast.message"
 require "ast.oneof"
 require "ast.ignore"
 require "ast.syntax"
 
-print("AST modules loaded")
+dprint("AST modules loaded")
 
 
 --------------------------------------------------------------------------------

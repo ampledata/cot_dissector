@@ -42,12 +42,18 @@ local dprint2  = Settings.dprint2
 local dassert  = Settings.dassert
 local derror   = Settings.derror
 
+local dsummary = Settings.dsummary
+
 local Struct             = Struct
 local Syntax             = require "syntax"
 local varint             = require "back_end.varint"
 local GenericDecoder     = require "generic.decoder"
 local GenericProtoFields = require "generic.proto_fields"
 local GenericExperts     = require "generic.experts"
+
+local ProtocolDispatch   = require "protocol.dispatch"
+
+local protocol_dispatcher = ProtocolDispatch.dispatcher
 
 if not Struct then
     error("Wireshark is too old: no Struct library; upgrade to version 1.12 or higher")
@@ -81,8 +87,23 @@ local RECURSION_LIMIT = 100
 local Decoder = {}
 local Decoder_mt = { __index = Decoder }
 
+-- XXX application protocol support (needs to move from here)
+local stomp_dissector = Dissector.get("stomp")
+local stomp_payload_field = Field.new("stomp.body")
+
+local websocket_dissector = Dissector.get("websocket")
+local websocket_payload_field = Field.new("websocket.payload")
 
 function Decoder.new(tvbuf, pktinfo, root)
+    -- process the application layer header (if any), returning a buffer
+    -- (either the current packet's payload or a payload assembled from
+    -- multiple packets) when a complete protobuf message is available
+    local new_tvbuf = protocol_dispatcher:dispatch(tvbuf, pktinfo, root)
+    if not new_tvbuf then
+        return
+    end
+    tvbuf = new_tvbuf
+
     local new_class = {  -- the new instance
         -- from wireshark
         ["tvbuf"] = tvbuf,
@@ -96,6 +117,9 @@ function Decoder.new(tvbuf, pktinfo, root)
         -- pseudo-stack of TreeItems; pushed when sub-tree is added, which
         -- occurs for Message/Group for example, and popped when it returns from it
         ["tree"] = root,
+
+        -- the original root (this isn't changed)
+        ["root"] = root,
 
         -- the child tree returned from tree:add() calls, used for tree
         -- push/popping
@@ -270,7 +294,7 @@ function Decoder:getWtypeSize(wtype)
         if wtype == "LENGTH_DELIMITED" then
             local value, sz = varint:decode32(self.raw, self.cursor, self.limit)
             if not value then
-                return self:addExpertTvb(nil, "invalid_length_delimiter", self.cursor, self.limit)
+                return self:addExpertTvb(nil, "invalid_length_delimited", self.cursor, self.limit)
             end
             self:advance(sz)
             -- note the length-delimited value can legitimately be 0
@@ -282,10 +306,12 @@ function Decoder:getWtypeSize(wtype)
 end
 
 
+
 -- called by the Message/Packet class by its wireshark-registered proto.dissector
 -- function - i.e., the first/top-level Message, which starts the whole thing
 -- off
 function Decoder:decode(packet)
+    -- dsummary("Decoder:decode", "packet", packet)
     packet:decode(self)
 end
 
@@ -342,6 +368,10 @@ function Decoder:decodeTags(tags, frequency)
         dassert(object.decode, "Programming error: tag in table does not have a dissect function")
         if self:enterRecursion() then
             local limit, cursor = self:pushLimit(size)
+
+            -- note the current field name, ready for a later call to
+            -- set_field_value()
+            protocol_dispatcher:set_field_name(object.name)
             if not object:decode(self, self.tag, self.last_wtype) then
                 -- the error should already be handled
                 return
@@ -377,9 +407,9 @@ function Decoder:addFieldInfo(tree, size)
     key_tree:add(pfields.tag, tvbuf(field_start, key_hdr_size), tag)
     key_tree:add(pfields.wiretype, tvbuf(field_start,1), self.last_wiretype)
 
-    -- add length delimiter info if there is one
+    -- add length delimited info if there is one
     if self.last_wtype == "LENGTH_DELIMITED" then
-        tree:add(pfields.length_delimiter,
+        tree:add(pfields.length_delimited,
                  tvbuf(field_start + key_hdr_size, self.length_size),
                  size)
     end
@@ -431,15 +461,30 @@ end
 
 -- adds the given ProtoField for limit size, advances
 function Decoder:addFieldBytes(pfield)
+    local number = self.pktinfo.number
+    local range = self.tvbuf(self.field_start + self.key_size, self.limit)
+
+    -- store the range, associating it with its field (see set_field_name())
+    protocol_dispatcher:set_field_value(number, range)
+
     local tree = self.tree:add(pfield, self.tvbuf(self.field_start, self.limit + self.key_size))
     self:addFieldInfo(tree, self.limit)
     self:advance(self.limit)
+
+    -- check whether a complete protobuf sub-layer payload is available and,
+    -- if so, dissect it
+    protocol_dispatcher:check_sublayer_payload(
+        self.tvbuf, self.pktinfo, self.root)
+
     return tree
 end
 
 
 function Decoder:addFieldVarint(pfield, vfunc)
     local value, size = vfunc(varint, self.raw, self.cursor, self.limit)
+
+    -- store the value, associating it with its field (see set_field_name())
+    protocol_dispatcher:set_field_value(self.pktinfo.number, value)
 
     if not value then
         return self:addExpertTvb(nil, "invalid_varint", self.cursor, self.limit)
@@ -510,7 +555,8 @@ end
 function Decoder:addProto(pfield, name, separator, is_packet_start)
     separator = separator or ":"
 
-    self.pktinfo.cols.protocol:set(name)
+    -- XXX obviously this should come from the namespace... but we don't have it here
+    self.pktinfo.cols.protocol:set("USP " .. name)
 
     if is_packet_start then
         self.pktinfo.cols.info:set(name)
@@ -519,7 +565,8 @@ function Decoder:addProto(pfield, name, separator, is_packet_start)
     end
 
     local tree = self.tree:add(pfield, self.tvbuf(self.field_start or 0, self.limit))
-    tree:set_text(name)
+    -- XXX obviously this should come from the namespace... but we don't have it here
+    tree:set_text("USP " .. name)
 
     -- self.cursor does not move, nor does self.limit
     return tree

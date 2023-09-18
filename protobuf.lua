@@ -31,6 +31,9 @@ end
 -- capture command line arguments
 local args = { ... }
 
+-- XXX need to generalise this so it will work under Windows
+local __DIR__ = Dir.personal_plugins_path() .. "/protobuf_dissector"
+local __DIR_SEPARATOR__ = package.config:sub(1,1) -- first character
 
 -- enable loading of our modules
 _G['protbuf_dissector'] = {
@@ -48,7 +51,6 @@ local Settings = require "settings"
 Settings:processCmdLine(args)
 local dprint  = Settings.dprint
 local dprint2 = Settings.dprint2
-
 
 -- load the rest of our modules
 local GenericProto  = require "generic.proto"
@@ -73,6 +75,27 @@ dprint2(#proto_files,"proto files being compiled")
 ----------------------------------------
 -- compile the proto files
 local decoder_table = Compiler:compile(proto_files)
+
+
+----------------------------------------
+-- create and register protocol handlers
+local Dispatch = require "protocol.dispatch"
+
+local CoAPHandler = require "protocol.coap"
+local coap_handler = CoAPHandler.new("CoAP Payload", "???", 5683)
+Dispatch.dispatcher:register(coap_handler)
+
+local STOMPHandler = require "protocol.stomp"
+local stomp_handler = STOMPHandler.new("STOMP Payload", "???", 61613)
+Dispatch.dispatcher:register(stomp_handler)
+
+local WebsocketHandler = require "protocol.websocket"
+local websocket_handler = WebsocketHandler.new("Websocket Payload", "???", 80)
+Dispatch.dispatcher:register(websocket_handler)
+
+local USPHandler = require "protocol.usp"
+local usp_handler = USPHandler.new("USP Payload")
+Dispatch.dispatcher:register(usp_handler)
 
 -- disable loading of our modules
 _G['protbuf_dissector'] = nil

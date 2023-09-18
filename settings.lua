@@ -20,6 +20,7 @@ local debug   = require "debug"
 local __DIR__           = protbuf_dissector.__DIR__
 local __DIR_SEPARATOR__ = protbuf_dissector.__DIR_SEPARATOR__
 
+local WIRESHARK_PROTOBUF_DEBUG_LEVEL = os.getenv("WIRESHARK_PROTOBUF_DEBUG_LEVEL")
 
 --------------------------------------------------------------------------------
 -- our Settings
@@ -62,6 +63,9 @@ local Settings = {
 
 }
 
+if WIRESHARK_PROTOBUF_DEBUG_LEVEL and WIRESHARK_PROTOBUF_DEBUG_LEVEL ~= "" then
+    Settings.debug_level = tonumber(WIRESHARK_PROTOBUF_DEBUG_LEVEL)
+end
 
 ----------------------------------------
 
@@ -84,7 +88,7 @@ local function generateOutput(t)
                 if vt == 'CURSOR' or vt == 'TOKEN' then
                     out[#out+1] = value:getDebugOutput()
                 else
-                    out[#out+1] = "\n" .. inspect(value, { filter = inspect_filter })
+                    out[#out+1] = inspect(value, { filter = inspect_filter })
                 end
             end
         else
@@ -173,13 +177,76 @@ end
 -- for non-false assertions
 function Settings.dassert(check, ...)
     if check then return check end
-    error( generateOutput({ "\nProtobuf ERROR:\n", ... }), 2 )
+    error( generateOutput({ "Protobuf ERROR:\n", ... }), 2 )
 end
 
 
 function Settings.derror(...)
-    error( generateOutput({ "\nProtobuf ERROR:\n", ... }), 2 )
+    error( generateOutput({ "Protobuf ERROR:\n", ... }), 2 )
 end
 
+
+-- XXX for debugging/understanding
+local function summary(k, v, sofar, indent)
+    if sofar == nil then sofar = {} end
+    if indent == nil then indent = "" end
+
+    local first = {"name", "label", "ttype"}
+    local ignore = {file_text=true, pfield=true, raw=true}
+    local literal = {}
+    local stopat = {frequency=true}
+
+    local vt = type(v)
+    local s
+    if vt == "boolean" or vt == "number" or vt == "string" or literal[k] then
+        if vt == "string" then
+            local vf = v
+            if vf:len() > 48 then
+                vf = vf:sub(0, 48) .. "..."
+            end
+            s = k .. ": (" .. v:len() .. ") "  .. vf
+        elseif vt == "boolean" then
+            s = k .. ": " .. tostring(v)
+        else
+            s = k .. ": " .. v
+        end
+    else
+        s = k .. ": (" .. vt .. ")"
+    end
+    sofar[#sofar+1] = indent .. s
+
+    indent = indent .. "  "
+
+    if false and vt == "table" then
+        local vm = getmetatable(v)
+        if vm then
+            sofar = summary("metatable", vm, sofar, indent)
+        end
+    end
+
+    if vt == "table" and not stopat[k] then
+        local tab = v
+
+        local done = {}
+        for _, k in ipairs(first) do
+            if type(tab[k]) ~= nil and tab[k] ~= nil then
+                sofar = summary(k, tab[k], sofar, indent)
+            end
+            done[k] = true
+        end
+
+        for k, v in pairs(tab) do
+            if not done[k] and not ignore[k] then
+                sofar = summary(k, v, sofar, indent)
+            end
+        end
+    end
+
+    return sofar
+end
+
+function Settings.dsummary(func, name, value)
+    Settings.dprint(func .. "\n" .. table.concat(summary(name, value), "\n"))
+end
 
 return Settings

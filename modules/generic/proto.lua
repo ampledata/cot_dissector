@@ -32,7 +32,7 @@ local GenericExperts     = require "generic.experts"
 local GenericProto = {}
 
 
-GenericProto.proto = Proto.new("Protobuf", "Google Protobuf Format")
+GenericProto.proto = Proto.new("ProtobufX", "Google Protobuf Format (with built-in parser)")
 
 local pfields = GenericProtoFields:getFields()
 
@@ -62,6 +62,7 @@ end
 
 
 DissectorTable.get("udp.port"):add(0, GenericProto.proto)
+DissectorTable.get("tcp.port"):add(0, GenericProto.proto)
 
 
 return GenericProto

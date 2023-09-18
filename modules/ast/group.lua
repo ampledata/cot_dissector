@@ -71,6 +71,7 @@ local ignore_types = {
     -- declaration tables
     MESSAGE = true,
     ENUM = true,
+    MAP = true,
 }
 
 function GroupStatement:analyze()

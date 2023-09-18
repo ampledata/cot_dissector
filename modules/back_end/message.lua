@@ -14,6 +14,9 @@
 if not _G['protbuf_dissector'] then return end
 
 
+local Settings = require "settings"
+local dprint   = Settings.dprint
+
 local Base      = require "back_end.base"
 local Frequency = require "back_end.frequency"
 
